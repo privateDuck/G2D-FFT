@@ -43,6 +43,13 @@ A Unity Based GPU-Accelerated 2D-FFT Library
   // You must dispose the GFFT instance after using it
   gfft.Dispose();
   ```
+  * If your code is time critical, you can synchronize the FFT with the render pipeline using a **CommandBuffer**
+  * For that, pass the command buffer as the first argument
+  ```c#
+  // cmb = CommandBuffer
+  gfft.ForwardFFT2_R2C(cmb, input_re, ref output_re, ref output_im);
+  gfft.InverseFFT2_C2R(cmb, input_re, input_im, ref output_re);
+  ```
 ## Extras
   * The provided helper method **GFFT.CreateRT(ref RenderTexture rt, GraphicsFormat format, FilterMode filterMode, int size)** should be used to create RenderTextures     for the output of the Fourier Transforms.
   * To create RenderTextures, GFFT provides 4 graphics formats
