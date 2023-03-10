@@ -17,26 +17,26 @@ namespace private_duck.Utils
         private int resolution;
         private Texture2D input;
         private RenderTexture out_pwsp, out_re, out_im;
-        private FFT fftRuntime;
+        private GFFT fftRuntime;
         private int pwsp_status = 0;
         private void ComputeForward()
         {
             if (!fftCompute)
             {
-                var strs = AssetDatabase.FindAssets("PD_FFT");
+                var strs = AssetDatabase.FindAssets("PD_Radix_2");
                 var assetPath = AssetDatabase.GUIDToAssetPath(strs[0]);
                 fftCompute = AssetDatabase.LoadAssetAtPath<ComputeShader>(assetPath);
                 Debug.Log("Found Compute Shader");
             }
 
             if (fftRuntime == null)
-                fftRuntime = new FFT(fftCompute);
+                fftRuntime = new GFFT(fftCompute);
 
             fftRuntime.ConfigureForSize(resolution);
 
-            FFT.CreateRT(ref out_pwsp, FFT.MultiChannelHalfPrecision, FilterMode.Point, resolution);
-            FFT.CreateRT(ref out_re, FFT.MultiChannelHalfPrecision, FilterMode.Point, resolution);
-            FFT.CreateRT(ref out_im, FFT.MultiChannelHalfPrecision, FilterMode.Point, resolution);
+            GFFT.CreateRT(ref out_pwsp, GFFT.MultiChannelHalfPrecision, FilterMode.Point, resolution);
+            GFFT.CreateRT(ref out_re, GFFT.MultiChannelHalfPrecision, FilterMode.Point, resolution);
+            GFFT.CreateRT(ref out_im, GFFT.MultiChannelHalfPrecision, FilterMode.Point, resolution);
 
             var sw = new System.Diagnostics.Stopwatch();
             sw.Start();
@@ -55,14 +55,14 @@ namespace private_duck.Utils
         {
             if (!fftCompute)
             {
-                var strs = AssetDatabase.FindAssets("PD_FFT");
+                var strs = AssetDatabase.FindAssets("PD_Radix_2");
                 var assetPath = AssetDatabase.GUIDToAssetPath(strs[0]);
                 fftCompute = AssetDatabase.LoadAssetAtPath<ComputeShader>(assetPath);
                 Debug.Log("Found Compute Shader");
             }
 
             if (fftRuntime == null)
-                fftRuntime = new FFT(fftCompute);
+                fftRuntime = new GFFT(fftCompute);
 
             fftRuntime.ConfigureForSize(resolution);
             var sw = new System.Diagnostics.Stopwatch();
@@ -93,7 +93,7 @@ namespace private_duck.Utils
                     {
                         EditorGUILayout.HelpBox("Must Be A Square Texture", MessageType.Error);
                     }
-                    else if (customTex.height > 1024 || customTex.height < 64 || !FFT.IsPowerOfTwo(((uint)customTex.height)))
+                    else if (customTex.height > 1024 || customTex.height < 64 || !GFFT.IsPowerOfTwo(((uint)customTex.height)))
                     {
                         EditorGUILayout.HelpBox("Texture Dimensions Must Be Powers Of 2 and Has To Be Between 64 and 1024", MessageType.Error);
                     }

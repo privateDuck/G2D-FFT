@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 
 namespace private_duck.Utils
 {
-    public class FFT : System.IDisposable
+    public class GFFT : System.IDisposable
     {
         public enum FFTMode
         {
@@ -50,8 +50,8 @@ namespace private_duck.Utils
         /// <summary>
         /// Initializes an instance of a 2D radix-2 FFT Algorithm
         /// </summary>
-        /// <param name="cs">Compute Shader that contains the implementation of the 2D FFT (_PD_FFT.compute)</param>
-        public FFT(ComputeShader cs)
+        /// <param name="cs">Compute Shader that contains the implementation of the 2D FFT (PD_Radix_2.compute)</param>
+        public GFFT(ComputeShader cs)
         {
             disposedValue = false;
 
@@ -72,9 +72,9 @@ namespace private_duck.Utils
         /// <summary>
         /// Initializes an instance of a 2D radix-2 FFT Algorithm
         /// </summary>
-        /// <param name="cs">Compute Shader that contains the implementation of the 2D FFT (PD_FFT.compute)</param>
+        /// <param name="cs">Compute Shader that contains the implementation of the 2D FFT (PD_Radix_2.compute)</param>
         /// <param name="size">Size of the FFT (size = 2^m where m : integer)</param>
-        public FFT(ComputeShader cs, int size, FFTMode mode)
+        public GFFT(ComputeShader cs, int size, FFTMode mode)
         {
             disposedValue = false;
 
