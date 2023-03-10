@@ -1,5 +1,5 @@
 # G2D-FFT
-A Unity Based GPU-Accelerated 2D-FFT Library
+A Unity Based GPU-Accelerated Radix-2 2D-FFT Library
 
 # Uses
 * Frequency Domain Image Processing
