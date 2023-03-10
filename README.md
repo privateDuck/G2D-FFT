@@ -39,6 +39,9 @@ A Unity Based GPU-Accelerated 2D-FFT Library
   
   // input_re and input_im are of the type UnityEngine.Texture
   // output_re and output_im are of the type UnityEngine.RenderTexture
+  
+  // You must dispose the GFFT instance after using it
+  gfft.Dispose();
   ```
 ## Extras
   * The provided helper method **GFFT.CreateRT(ref RenderTexture rt, GraphicsFormat format, FilterMode filterMode, int size)** should be used to create RenderTextures     for the output of the Fourier Transforms.
