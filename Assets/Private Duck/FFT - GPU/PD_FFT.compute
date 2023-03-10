@@ -1,0 +1,308 @@
+#pragma kernel R2C
+#pragma kernel C2R
+#pragma kernel R2R
+
+#pragma multi_compile FFT_64 FFT_128 FFT_256 FFT_512 FFT_1024
+#pragma multi_compile Single Multi
+
+#if defined(FFT_64)
+#define size 64
+#define logSize 6
+#elif defined(FFT_128)
+#define size 128
+#define logSize 7
+#elif defined(FFT_256)
+#define size 256
+#define logSize 8
+#elif defined(FFT_512)
+#define size 512
+#define logSize 9
+#elif defined(FFT_1024)
+#define size 1024
+#define logSize 10
+#else
+#define size 256
+#define logSize 8
+#endif
+
+struct complexRGB
+{
+    float2 R;
+    float2 G;
+    float2 B;
+};
+
+#if defined(Single)
+#define structure float
+#else
+#define structure float4
+#endif
+
+static const float twoPi = 6.28318530718f;
+
+RWTexture2D<structure> outputRE;
+RWTexture2D<structure> outputIM;
+
+RWStructuredBuffer<complexRGB> firstStageBuffer;
+
+Texture2D<structure> inputRE;
+Texture2D<structure> inputIM;
+
+bool inverse;
+bool horizontal;
+
+groupshared float2 buffer[2][size];
+
+uint index2(uint x, uint y)
+{
+    return x + y * size;
+}
+
+uint index2(uint2 xy)
+{
+    return xy.x + xy.y * size;
+}
+
+float2 comp_mul(float2 a, float2 b)
+{
+    return float2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+float comp_mag(float2 c)
+{
+    return sqrt(c.x * c.x + c.y * c.y);
+}
+
+float comp_arg(float2 c)
+{
+    return atan2(c.x, c.y);
+}
+
+complexRGB compRGB(float2 r, float2 g, float2 b)
+{
+    complexRGB c;
+    c.R = r;
+    c.G = g;
+    c.B = b;
+    return c;
+}
+
+void ButterflyValues(uint span, uint index, out uint2 indices, out float2 twiddle)
+{
+    uint w = span * (index / span);
+    uint i = (w + index) % size;
+    sincos(-(twoPi / size) * w, twiddle.y, twiddle.x);
+    indices = uint2(i, i + span);
+}
+
+float2 ComputeFFT(uint threadID, float2 value)
+{
+    buffer[0][threadID] = value;
+    GroupMemoryBarrierWithGroupSync();
+    bool flag = false;
+
+    [unroll(logSize)] 
+    for (int stage = size >> 1; stage > 0; stage >>= 1)
+    {
+        uint2 inputIndices;
+        float2 w;
+        float2 s = (inverse) ? float2(1.0, -1.0) : float2(1.0, 1.0);
+        ButterflyValues(stage, threadID, inputIndices, w);
+        w *= s;
+        buffer[!flag][threadID] = buffer[flag][inputIndices.x] + comp_mul(w, buffer[flag][inputIndices.y]);
+
+        flag = !flag;
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    return buffer[flag][threadID];
+}
+
+/* float4 DualFFT(uint threadID, float4 complex2)
+{
+    buffer1[0][threadID] = complex2;
+    GroupMemoryBarrierWithGroupSync();
+    bool pingpong = false;
+
+    [unroll(logSize)]
+    for(uint i = 0; i<logSize; i++)
+    {
+        float4 data = twiddleLUT[uint2(i,threadID)];
+        uint2 inputIndices = uint2(data.zw);
+        float2 twiddle = data.xy;
+        float s = (inverse) ? -1.0 : 1.0;
+
+        float4 p12 = buffer1[pingpong][inputIndices.x];
+        float4 q12 = buffer1[pingpong][inputIndices.y];
+
+        float2 w = float2(twiddle.x,s*twiddle.y);
+        float4 wq = float4(comp_mul(w,q12.xy),comp_mul(w,q12.zw));
+        float4 pwq = p12 + wq;
+
+        buffer1[!pingpong][threadID] = pwq;
+        pingpong = !pingpong;
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    return buffer1[pingpong][threadID];
+} */
+
+[numthreads(size, 1, 1)] 
+void R2C(uint3 id : SV_DispatchThreadID)
+{
+    uint threadId = id.x;
+    uint2 readIndex = horizontal ? id.xy : id.yx;
+
+    complexRGB stageInput;
+
+#if defined(Single)
+    if (horizontal)
+    {
+        float inpRe = inputRE[readIndex];
+        stageInput = compRGB(float2(inpRe.r, 0), float2(0, 0), float2(0, 0));
+    }
+#else
+    if (horizontal)
+    {
+        float3 inpRe = inputRE[readIndex].rgb;
+        stageInput = compRGB(float2(inpRe.r, 0), float2(inpRe.g, 0), float2(inpRe.b, 0));
+    }
+#endif
+    else
+    {
+        stageInput = firstStageBuffer[index2(readIndex.xy)];
+    }
+
+    float2 dirResultR = ComputeFFT(threadId, stageInput.R);
+#if defined(Multi)
+    float2 dirResultG = ComputeFFT(threadId, stageInput.G);
+    float2 dirResultB = ComputeFFT(threadId, stageInput.B);
+
+    if (horizontal)
+    {
+        firstStageBuffer[index2(id.xy)] = compRGB(dirResultR, dirResultG, dirResultB);
+    }
+    else
+    {
+        uint2 flip = (id.xy + size / 2) % size;
+        outputRE[flip] = float4(dirResultR.x, dirResultG.x, dirResultB.x, 0);
+        outputIM[flip] = float4(dirResultR.y, dirResultG.y, dirResultB.y, 0);
+    }
+#elif defined(Single)
+    if (horizontal)
+    {
+        firstStageBuffer[index2(id.xy)] = compRGB(dirResultR, float2(0, 0), float2(0, 0));
+    }
+    else
+    {
+        uint2 flip = (id.xy + size / 2) % size;
+        outputRE[flip] = dirResultR.x;
+        outputIM[flip] = dirResultR.y;
+    }
+#endif
+}
+
+[numthreads(size, 1, 1)] 
+void C2R(uint3 id : SV_DispatchThreadID)
+{
+    uint threadId = id.x;
+    uint2 readIndex = horizontal ? id.xy : id.yx;
+    complexRGB stageInput;
+
+#if defined(Single)
+    if (horizontal)
+    {
+        float inpRe = inputRE[readIndex];
+        float inpIm = inputIM[readIndex];
+        stageInput = compRGB(float2(inpRe.r, inpIm.r), float2(0, 0), float2(0, 0));
+    }
+#else
+    if (horizontal)
+    {
+        float3 inpRe = inputRE[readIndex].rgb;
+        float3 inpIm = inputIM[readIndex].rgb;
+        stageInput = compRGB(float2(inpRe.r, inpIm.r), float2(inpRe.g, inpIm.g), float2(inpRe.b, inpIm.b));
+    }
+#endif
+    else
+    {
+        stageInput = firstStageBuffer[index2(readIndex.xy)];
+    }
+
+    float2 dirResultR = ComputeFFT(threadId, stageInput.R);
+#if defined(Multi)
+    float2 dirResultG = ComputeFFT(threadId, stageInput.G);
+    float2 dirResultB = ComputeFFT(threadId, stageInput.B);
+
+    if (horizontal)
+    {
+        firstStageBuffer[index2(id.xy)] = compRGB(dirResultR, dirResultG, dirResultB);
+    }
+    else
+    {
+        float mult = 1.0 - 2.0 * ((id.x + id.y) % 2);
+        outputRE[id.xy] = float4(dirResultR.x, dirResultG.x, dirResultB.x, 0) * mult / (size * size);
+    }
+#elif defined(Single)
+    if (horizontal)
+    {
+        firstStageBuffer[index2(id.xy)] = compRGB(dirResultR, float2(0, 0), float2(0, 0));
+    }
+    else
+    {
+        float mult = 1.0 - 2.0 * ((id.x + id.y) % 2);
+        outputRE[id.xy] = dirResultR.x * mult / (size * size);
+    }
+#endif
+}
+
+[numthreads(size, 1, 1)]
+void R2R(uint3 id : SV_DispatchThreadID)
+{
+    uint threadId = id.x;
+    uint2 readIndex = horizontal ? id.xy : id.yx;
+    complexRGB stageInput;
+
+#if defined(Single)
+    if (horizontal)
+    {
+        float inpRe = inputRE[readIndex];
+        stageInput = compRGB(float2(inpRe.r, 0), float2(0, 0), float2(0, 0));
+    }
+#else
+    if (horizontal)
+    {
+        float3 inpRe = inputRE[readIndex].rgb;
+        stageInput = compRGB(float2(inpRe.r, 0), float2(inpRe.g, 0), float2(inpRe.b, 0));
+    }
+#endif
+    else
+    {
+        stageInput = firstStageBuffer[index2(readIndex.xy)];
+    }
+
+    float2 dirResultR = ComputeFFT(threadId, stageInput.R);
+#if defined(Multi)
+    float2 dirResultG = ComputeFFT(threadId, stageInput.G);
+    float2 dirResultB = ComputeFFT(threadId, stageInput.B);
+    if (horizontal)
+    {
+        firstStageBuffer[index2(id.xy)] = compRGB(dirResultR, dirResultG, dirResultB);
+    }
+    else
+    {
+        uint2 flip = (id.xy + size / 2) % size;
+        outputRE[flip] = float4(comp_mag(dirResultR), comp_mag(dirResultG), comp_mag(dirResultB), 0);
+    }
+#elif defined(Single)
+    if (horizontal)
+    {
+        firstStageBuffer[index2(id.xy)] = compRGB(dirResultR, float2(0, 0), float2(0, 0));
+    }
+    else
+    {
+        uint2 flip = (id.xy + size / 2) % size;
+        outputRE[flip] = comp_mag(dirResultR);
+    }
+#endif
+}
